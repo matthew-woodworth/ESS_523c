@@ -512,7 +512,7 @@ ggplot(state_percapita, aes(x = date, y = rolling_avg_percapita, color = state))
 
 e. Briefly describe the influence scaling by population had on the analysis? Does it make some states look better? Some worse? How so?
 
-# scaling by population made it easier to see the individual peaks per state even if count were low, but led to some misunderstanding when graphs were compared to eachother. Without closely looking at the scales just visually, Colorado looked to have the same case counts as Alabama evn though on the scales Colorado was only at roughly 16,000 while Albama was at 20000. However, if there was no scaling by population, the states with lower case counts would barely be seen with enough clarity to compare state by state.
+# scaling by population made it easier to see the individual peaks per state even if count were low, but led to some misunderstanding when graphs were compared to eachother. Without closely looking at the scales just visually, Colorado looked to have the same case counts as Alabama evn though on the scales Colorado was only at roughly 16,000 while Albama was at 20,000. However, if there was no scaling by population, the states with lower case counts would barely be seen with enough clarity to compare state by state.
 > ...
 
 # **Question 7**: Space & Time
@@ -707,7 +707,7 @@ model <- lm(log_cases ~ log_deaths * log_population + season, data = covid_summa
 
 summary(model)
 
-# The r^2 value was 0.3497 which is very low and the goodness of fit is poor. With that said though, the P value of this model is extremly low, meaning there is a statistically significant relationship between log population and log deaths.
+# The r^2 value was 0.3497 which is very low and the goodness of fit is poor. With that said though, the P value of this model is extremely low at 2.2e-16, meaning there is a statistically significant relationship between log population and log deaths.
 ```
 
 # **Question 9:** Evaluation
