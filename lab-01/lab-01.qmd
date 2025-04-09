@@ -50,6 +50,7 @@ You should build this analysis so that running it will extract the most current 
 a. Start by reading in the data from the NY-Times URL with `read_csv` (make sure to attach the `tidyverse`). The data read from Github is considered our "raw data". Remember to always leave "raw-data-raw" and to generate meaningful subsets as you go. 
 
 ```{r}
+setwd("~/Desktop/CSU Spring 2025/ESS523c/ESS_523c/lab-01")
 library(tidyverse)
 library(flextable)
 data <- read_csv('https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv')
