@@ -21,8 +21,8 @@ remotes::install_github("ropenscilabs/rnaturalearthdata")
 ```
 
 ```{r}
-install.packages("gghighlight")
-install.packages("ggrepel")
+#install.packages("gghighlight")
+#install.packages("ggrepel")
 ```
 
 ```{r}
