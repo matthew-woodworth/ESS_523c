@@ -1,0 +1,131 @@
+---
+title: "Model In class coding demo"
+format: html
+editor: visual
+---
+
+
+```{r}
+install.packages("listenv", type = "source")
+
+install.packages("prodlim", type = "source")
+
+# Install 'pak' if you don't have it
+install.packages("pak")
+
+# Then install tidymodels with all dependencies cleanly
+pak::pkg_install("tidymodels")
+
+install.packages("iterators", type = "source")
+
+library(iterators)
+library(prodlim)
+library(tidymodels)
+library(tidyverse)
+```
+
+```{r}
+covid_url <- read_csv('https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv')
+
+pop_url <- read_csv('https://www2.census.gov/programs-surveys/popest/datasets/2020-2023/counties/totals/co-est2023-alldata.csv')
+```
+
+```{r}
+data = readr::read_csv(as.character(covid_url), show_col_types = FALSE)
+
+census = readr::read_csv(pop_url, show_col_types = FALSE) %>% 
+  filter(county =="000") %>% 
+  mutate(fips = STATE) %>% 
+  select(fips, contains("2021"))
+
+state_data <- data %>% 
+  group_by(fips) %>% 
+  mutate(new_cases = pmax(0,cases - lag(cases)),
+         new_deaths = deaths - lag(deaths)) %>% 
+  ungroup() %>% 
+  left_join(census, by = "fips") %>% 
+  mutate(m = month(date), y = year(date),
+         season - case_when(
+           m %in% 3:5 ~ "Spring",
+           m %in% 6:8 ~ "Summer",
+           m %in% 9:11 ~ "Fall",
+           m %in% c(12, 1, 2) ~ "Winter"
+         )) %>% 
+  group(state, y, season) %>% 
+  mutate(season_cases = sum(new_cases, na.rm = TRUE),
+         season_death = sum(new_deaths, na.rm = TRUE)) %>% 
+  distinct(state, y, season, .keep_all = TRUE) %>% 
+  ungroup() %>% 
+  drop_na() %>% 
+  mutate(logC = log(season_cases + 1)) %>% 
+  select(logC, contains("season"), POPESTIMATE2021, DEATHS2021, BIRTHS2021, state)
+
+skimr::skim(state_data)
+
+```
+
+```{r}
+set.seed(123)
+split <- initial_split(state_data, prop = .8, strata = season)
+s_train <- training(split)
+s_testing <- testing(split)
+s_folds <- vfold_cv(s_train, v = 10)
+
+```
+
+```{r}
+rec <- recipe(logC ~ ., data = train) %>% 
+  step_rm(season_cases, state) %>% 
+  step_dummy(all_nominal_predictors()) %>% 
+  step_scale(all_numeric_predictors()) %>% 
+  step_center(all_numeric_predictors())
+```
+
+```{r}
+lm_model <- linear_reg() %>% 
+  set_mode("regression")
+
+
+rf_model <- rand_forest() %>% 
+  set_engine("ranger", importance = "impurity") %>% 
+  set_mode("regression")
+
+b_model <- boost_tree() %>% 
+  set_engine("xgboost") %>% 
+  set_mode("regression")
+
+nnet_model <- mlp() %>% 
+  set_engines("nnet") %>% 
+  set_mode("regression")
+
+```
+
+```{r}
+wf <- workflow_set(list(rec), list(lm_model, rf_model, b_model, nnet_model)) %>% 
+  workflow_map(resamples = s_folds)
+
+wf
+
+
+autoplot(wf) + theme_linedraw()
+
+fit <- workflow() %>% 
+  add_recipe(rec) %>% 
+  add_model(rf_model) %>% 
+  fit(data = s_train)
+
+vip::vip(fit)
+
+
+predictions = augment(fit, new_data = s_testing)
+
+
+metrics(predictions, truth = logC, estimate = .pred)
+
+ggplot(predictions, aes(x = logC, y = .pred))+
+  geom_point()+
+  abline()+
+  geom_smooth()
+```
+
+

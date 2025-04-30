@@ -57,6 +57,7 @@ For this lab we need three (3) datasets.
 For this lab we want to calculate distances between features, therefore we need a projection that preserves distance at the scale of CONUS. For this, we will use the North America Equidistant Conic:
 
 ```{r}
+
 eqdc <- '+proj=eqdc +lat_0=40 +lon_0=-96 +lat_1=20 +lat_2=60 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs'
 ```
 
@@ -263,7 +264,7 @@ ggplot() +
 Create a map that colors USA cities by their distance from the nearest state border. In addition, re-draw and label the 5 cities that are farthest from any border.
 
 ```{r}
-five_farthest <- cities |> 
+five_farthest <- cities %>%  
   slice_max(distance_to_state_border, n = 5)
 
 ggplot() + 
