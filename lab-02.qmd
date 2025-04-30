@@ -12,12 +12,12 @@ format:
     include-after-body:  ../slides/footer-annotations.html
 ---
 ```{r}
-remotes::install_github("ropensci/USAboundaries")
-remotes::install_github("ropensci/USAboundariesData")
+#remotes::install_github("ropensci/USAboundaries")
+#remotes::install_github("ropensci/USAboundariesData")
 ```
 
 ```{r}
-remotes::install_github("ropenscilabs/rnaturalearthdata")
+#remotes::install_github("ropenscilabs/rnaturalearthdata")
 ```
 
 ```{r}
@@ -125,7 +125,7 @@ Finally, remove cities in states not wanted and make sure the data is in a proje
 Congratulations! You now have three real-world, large datasets ready for analysis.
 
 ```{r}
-cities <-  read_csv("~/Desktop/CSU Spring 2025/ESS523c/ESS_523c/lab-02/simplemaps_uscities_basicv1/uscities.csv", show_col_types = FALSE) %>%  
+cities <-  read_csv("~/Desktop/CSU Spring 2025/ESS523c/ESS_523c/simplemaps_uscities_basicv1/uscities.csv", show_col_types = FALSE) %>%  
   st_as_sf(coords = c("lng", "lat"), crs = 4326) %>%  
   st_transform(eqdc) 
 ```
