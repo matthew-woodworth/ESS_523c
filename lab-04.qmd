@@ -30,6 +30,7 @@ library(rstac) # STAC API
 library(terra) # Raster Data handling
 library(sf) # Vector data processing
 library(mapview) # Rapid Interactive visualization
+library(stars)
 ```
 
 ## Step 1: AOI identification
@@ -46,7 +47,7 @@ The flood event occurred on September 26, 2016. A primary challenge with remote 
 temporal_range <- "2016-09-24/2016-09-29"
 ```
 
-Step 3: Identifying the relevant images
+## Step 3: Identifying the relevant images
 
 The next step is to identify the images that are available for our AOI and time range. This is where the rstac package comes in. The rstac package provides a simple interface to the SpatioTemporal Asset Catalog (STAC) API, which is a standard for discovering and accessing geospatial data.
 
@@ -171,6 +172,304 @@ Awesome! We have now (1) identified, (2) downloaded, and (3) saved our images.
 We have loaded them as a multiband SpatRast object and cropped the domain to our AOI. Lets make a few RGB plots to see what these images reveal.
 
 ```{r}
+# Transform AOI to raster CRS
+palo_proj <- sf::st_transform(palo, crs(flood_raster))
+
+# Crop raster stack to AOI
+flood_crop <- terra::crop(flood_raster, vect(palo_proj))
+
+
+# Plot RGB composite using red, green, blue bands
+plotRGB(flood_crop, r = "red", g = "green", b = "blue", stretch = "lin")
+
+```
+
+# Question 2: Data Visualization
+
+Standard cameras replicate whats seen with the human eye, by capturing light in the red, green and blue wavelengths and applying red, green ,and blue filters (channels) to generate a natural looking RGB image.
+
+With a multispectral Landsat 8 image, we have more information to work with and different wavelengths/combinations can help isolate particular features.
+
+For example, the Near Infrared (NIR) wavelength is commonly used to analysis vegetation health because vegetation reflects strongly in this portion of the electromagnetic spectrum. Alternatively, the Shortwave Infrared (SWIR) bands are useful for discerning what is wet and dry.
+
+When working with Landsat imagery, a logical first step is to load an image into an image analysis program (like ENVI) to visualize whats in the scene. We can do the same thing with R using the plotRGB function and selecting which band should populate each channel.
+
+stretching is a common technique used to enhance the contrast of an image by adjusting the brightness and contrast of the pixel values. This is done by mapping the pixel values to a new range, which can help to highlight certain features in the image. In R, the stretch argument in the plotRGB function allows you to apply different stretching methods to enhance the visual appearance of the image. Test the different stretch options (“lin” and “hist”) and see how they affect the image.
+
+For question 2, make four unique combinations:
+
+R-G-B (natural color)
+NIR-R-G (fa) (color infared)
+NIR-SWIR1-R (false color water focus)
+Your choice
+What does each image allow you to see?
+
+RGB Natural Color allows us to see an image that replicates human vision. Water is shown as dark blue/black and vegetation as dark green. Urban areas are gray.
+
+Color Infrared will show deep red for healthy vegetation and can be a great measure of forest health, etc. 
+
+False color water focus can show us water as dark blue with very defined and crisp boundaries compared to other indices.
+
+My custom choice of using SWIR, NIR, and Blue can be used effectively in agricultural monitoring where healthy crops and vegetation appear as vibrant green, bare soil is magenta, and water appears dark blue. This index can also be used to identify crop types and/or growth stages.
+
+```{r}
+plotRGB(flood_crop, r = "red", g = "green", b = "blue", 
+        stretch = "lin", main = "Natural Color")
+
+plotRGB(flood_crop, r = "nir08", g = "red", b = "green", 
+        stretch = "hist", main = "Color Infrared")
+
+plotRGB(flood_crop, r = "swir16", g = "nir08", b = "red", 
+        stretch = "lin", main = "Water/Land Boundary")
+
+plotRGB(flood_crop, r = "swir16", g = "nir08", b = "blue", 
+        stretch = "hist", main = "Agricultural Analysis")
+
+
+```
+
+# Question 3: Indeces and Thresholds
+
+Accurate assessment of surface water features (like flooding) have been made possible by remote sensing technology. Index methods are commonly used for surface water estimation using a threshold value.
+
+For this lab we will look at 5 unique thresholding methods for delineating surface water features from different combinations of Landsat bands listed below:
+
+# Step 1: Raster Algebra
+Create 5 new rasters using the formulas for NDVI, NDWI, MNDWI, WRI and SWI
+Combine those new rasters into a stacked object (c())
+Set the names of your new stack to useful values
+Plot the new stack, using the following palette (colorRampPalette(c("blue", "white", "red"))(256))
+Describe the 5 images. How are they simular and where do they deviate?
+
+```{r}
+# Calculate the 5 water indices
+ndvi <- (flood_crop$nir08 - flood_crop$red) / (flood_crop$nir08 + flood_crop$red)
+ndwi <- (flood_crop$green - flood_crop$nir08) / (flood_crop$green + flood_crop$nir08)
+mndwi <- (flood_crop$green - flood_crop$swir16) / (flood_crop$green + flood_crop$swir16)
+wri <- (flood_crop$green + flood_crop$red) / (flood_crop$nir08 + flood_crop$swir16)
+swi <- 1 / sqrt(flood_crop$blue - flood_crop$swir16)
+
+# Stack all indices into a single object
+indices_stack <- c(ndvi, ndwi, mndwi, wri, swi)
+
+# Name the layers in the stack
+names(indices_stack) <- c("NDVI", "NDWI", "MNDWI", "WRI", "SWI")
+
+# Create a color palette
+water_palette <- colorRampPalette(c("blue", "white", "red"))(256)
+
+# Plot the stack with the custom palette
+plot(indices_stack, col = water_palette)
+
+```
+
+# Step 2: Raster Thresholding
+Here we will extract the flood extents from each of the above rasters using the thresholds defined in the above table.
+
+For this, we will use the app function and apply a custom formula for each calculated field from step 1 that applies the threshold in a way that flooded cells are 1 and non-flooded cells are 0.
+
+An example of this, applied to the ndvi raster is shown below:
+
+The app function applies a function to each cell of the raster, and the ifelse function is used to set the values based on the threshold.
+
+For all 5 index rasters do the following apply the appropriate threshold and then do the following:
+
+Stack the binary ([0,1]) files into a new stack (c()),
+Set the names to meaningful descriptions (setNames)
+Perform one more classifier (app) making sure that all NA values are set to zero.
+Plot the stack so that floods are blue, and background is white.
+
+
+
+```{r}
+# Apply thresholds to create binary flood maps (1=flood, 0=non-flood)
+ndvi_flood <- app(ndvi, function(x) ifelse(x < 0, 1, 0))
+ndwi_flood <- app(ndwi, function(x) ifelse(x > 0, 1, 0))
+mndwi_flood <- app(mndwi, function(x) ifelse(x > 0, 1, 0))
+wri_flood <- app(wri, function(x) ifelse(x > 1, 1, 0))
+swi_flood <- app(swi, function(x) ifelse(x < 5, 1, 0))
+
+# Stack binary flood maps into a single raster stack
+flood_stack <- c(ndvi_flood, ndwi_flood, mndwi_flood, wri_flood, swi_flood)
+
+# Set meaningful names for the layers
+names(flood_stack) <- c("NDVI_flood", "NDWI_flood", "MNDWI_flood", "WRI_flood", "SWI_flood")
+
+# Ensure NA values are set to zero
+flood_stack <- app(flood_stack, function(x) ifelse(is.na(x), 0, x))
+
+# Plot with floods in blue, background in white
+water_palette <- c("white", "blue")
+plot(flood_stack, col = water_palette)
+
+```
+
+# Step 3: Describe the differences and similarities between the different maps
+
+The five binary flood maps show different water extents based on each index's sensitivity:
+NDVI-based map identifies water where vegetation is absent (values < 0), but may include non-water features like bare soil or urban areas. It shows the least specificity for water detection.
+NDWI and MNDWI maps show similar patterns but MNDWI typically provides clearer water boundaries because it uses SWIR1 instead of NIR. These indices were specifically designed for water mapping and perform better than NDVI.
+WRI-based map typically shows the most conservative estimate of flooding, capturing only areas with very strong water signatures due to its threshold of >1 and multi-band approach. This reduces false positives but may underestimate flood extent.
+SWI-based map often shows the most extensive flooding because its non-linear formula enhances subtle water features. Its threshold of <5 and use of the blue band helps detect shallow water but may overestimate in areas with shadows.
+Similarities across methods:
+All detect the main water bodies consistently
+Similar core flood patterns along the Cedar River
+All use spectral differences between water and non-water features
+Differences between methods:
+Varying sensitivity to mixed pixels (partially flooded areas)
+Different levels of false positives in urban areas and shadows
+Variable detection of shallow or turbid water
+Edge detection precision varies between indices
+The MNDWI-based flood map generally provides the most reliable results for this application as it balances sensitivity with accuracy, particularly in areas with mixed land cover.
+
+# Question 4:
+
+An alternative way to identify similar features in a continuous field is through supervised or unsupervised classification. Supervised classification groups values (cells) based on user supplied “truth” locations. Since flood events are fast-occurring there is rarely truth points for a live event. Instead developers rely on libraries of flood spectral signatures.
+
+Unsupervised classification finds statistically significant groupings within the data. In these clustering algorithms, the user specifies the number of classes and the categorization is created based on the patterns in the data.
+
+For this lab we will use a simple k-means algorithm to group raster cells with similar spectral properties.
+
+## Step 1:
+Anytime we want to be able to produce a consistent/reproducible result from a random process in R we need to set a seed. Do so using set.seed
+```{r}
+set.seed(320)  # You can use any integer as the seed
+
+```
+
+## Step 2:
+Extract the values from your 6-band raster stack with values
+Check the dimensions of the extracted values with dim
+What do the diminsions of the extracted values tell you about how the data was extracted?
+Remove NA values from your extracted data with na.omit for safety
+
+```{r}
+vals <- terra::values(flood_crop)
+dim(vals)
+
+
+vals_noNA <- na.omit(vals)
+
+```
+
+## Step 3:
+Use the kmeans clustering algorithm from the stats package to cluster the extracted raster data to a specified number of clusters k (centers). Start with 12.
+```{r}
+k <- 12
+kmeans_result <- kmeans(vals_noNA, centers = k)
+
+
+```
+
+Once the kmeans algorithm runs, the output will be a list of components. One of these is cluster which provides a vector of integers from (1:k) indicating the cluster to which each row was allocated.
+
+## Step 4:
+Create a new raster object by copying one of the original bands. For example:
+Set the values of the copied raster to the cluster vector from the output kmeans object. For example:
+Try a few different clusters (k) to see how the map changes.
+```{r}
+cluster_raster <- flood_crop$red
+
+# Create a vector for all cells, filled with NA
+all_clusters <- rep(NA, nrow(vals))
+# Fill in cluster assignments for non-NA rows
+all_clusters[!is.na(vals[,1])] <- kmeans_result$cluster
+# Set these values to the raster
+values(cluster_raster) <- all_clusters
+
+```
+
+## Step 5:
+Great! You now have a categorical raster with categories 1:k. The issue is we don’t know the value that corresponds to the flood water. To identify the flood category programatically, generate a table crossing the values of one of your binary flood rasters, with the values of your kmeans_raster. To do this, you will use the table function and pass it the values from a binary flood raster, and the values from your kmeans_raster. Here the following occurs:
+
+table builds a contingency table counting the number of times each combination of factor levels in the input vector(s) occurs. This will give us a table quantifying how many cells with a value 1 are aligned with each of the k classes, and how many cells with a value 0 are aligned with each of the k classes. If you pass the binary flood values as the first argument to table then the unique values (0,1) will be the rows. They will always be sorted meaning you know the flooded cells will be in the second row.
+
+which.max() returns the index of the maximum value in a vector.
+
+combine this information to identify the cluster in the kmeans data that coincides with the most flooded cells in the binary mask.
+
+Once you know this value, use app to extract the flood mask in a similar way to the thresholding you did above.
+
+Finally add this to add to your flood raster stack with c() and make a new plot!
+
+```{r}
+tab <- table(values(ndwi_flood), values(cluster_raster))
+
+flood_row <- 2  # Assuming '1' is in the second row (flooded)
+flood_cluster <- which.max(tab[flood_row, ])
+
+flood_mask <- app(cluster_raster, function(x) ifelse(x == flood_cluster, 1, 0))
+
+flood_stack_new <- c(flood_stack, flood_mask)
+names(flood_stack_new)[length(flood_stack_new)] <- "KMeans_Flood"
+
+plot(flood_stack_new$KMeans_Flood, col = c("white", "blue"), main = "Flood Mask from K-means")
+
+
+```
+
+Question 5
+
+Awesome! You have now created a flood raster using 6 different methods. Our last goal is to identify how they compare.
+
+First we will calculate the total area of the flooded cells in each image. You can use global to determine the sum of each layer. Since flooded cells have a value of 1, the sum of an entire band is equivalent to the number of flooded cells. You can then use the resolution of the cell to convert counts to a flooded area.
+Print these values
+```{r}
+# Calculate the sum (number of flooded cells) for each method
+flooded_cells <- global(flood_stack, "sum", na.rm = TRUE)
+
+# Get cell area in square meters (assuming 30m x 30m Landsat resolution)
+cell_area <- prod(res(flood_stack))  # Should be 900 m^2
+
+# Calculate flooded area (in square meters)
+flooded_area_m2 <- flooded_cells * cell_area
+
+# Convert to hectares (1 ha = 10,000 m^2)
+flooded_area_ha <- flooded_area_m2 / 10000
+
+# Print results
+areas <- data.frame(Method = names(flood_stack),
+                    Flooded_Cells = flooded_cells[,1],
+                    Area_m2 = flooded_area_m2[,1],
+                    Area_ha = flooded_area_ha[,1])
+print(areas)
+
+```
+
+Second we can visualize the uncertainty in our classifications by summing the entire stack using app. The higher the count in each pixel, the more certain we can be about its flooded state. For example, if a cell has a value of 6, it indicates that every method identified the cell as flooded, if it has a value of 2 then we know that two of the methods identified the cell as flooded.
+Plot your flood map using the blues9 color palette
+```{r}
+# Sum the flood stack across methods
+flood_agreement <- app(flood_stack, sum, na.rm = TRUE)
+
+# Plot with blues9 palette
+blues9 <- hcl.colors(9, palette = "Blues")
+plot(flood_agreement, col = blues9, main = "Flood Classification Agreement (0-6 Methods)")
+```
+
+Third once you have a summed raster layer, copy it as a new layer, and set all 0 values to NA. Then map the raster with mapview. Zoom and pan around the interactive map noting that a pixel level is displayed in the upper right hand corner.
+```{r}
+flood_agreement_na <- flood_agreement
+values(flood_agreement_na)[values(flood_agreement_na) == 0] <- NA
+
+
+mapview(flood_agreement_na, col.regions = blues9, legend = TRUE)
+
+
+```
+
+Why are some of the cell values not an even number?
+
+Some cell values are not even numbers because not all methods always agree. Each method uses a different index or threshold, so for any given cell, it might be classified as flooded by, for example, 1, 2, 3, 4, 5, or all 6 methods. The sum reflects the number of methods that classified the cell as flooded, which can be any integer from 0 to 6-not just even numbers.
+
+Congratulations! You have successfully carried out a complete flood analysis from data acquisition through evaluation. This kind of work goes on regularly and is part of a couple national efforts (NOAA, USGS, FirstStreet, FEMA) to generate flood inundation libraries that contribute to better extraction and classification of realtime flood events, resource allocation during events, and damage assessments post events.
+
+Here we used Landsat imagery but the same process could be implemented on drone footage, MODIS data, or other private satellite imagery.
+
+Your evaluation was based purely on the raster data structure and your ability to conceptualize rasters as vectors of data with dimensional structure. You applied simple mathematical operators (+, /, -) to the raster bands, and a kmeans clustering algorithm to the data matrix of the multiband raster - all within ~100 lines of code!
+
+```{r}
+
 
 ```
 
